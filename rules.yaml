@@ -1,0 +1,435 @@
+version: "1.1"
+description: >
+  Alias patches + canonical classes for military symbology dataset (normal_images, sketches).
+  Apply normalizer steps in order, then fixes, then explicit filename overrides, then stem_equiv.
+
+# ---------------------------------------------------------
+# Normalizer steps (documented so you mirror these in code)
+# ---------------------------------------------------------
+normalizer:
+  steps:
+    - lower_case: true
+    - strip_extension: true
+    - replace_spaces_hyphens_with_underscore: true
+    - collapse_multiple_underscores: true
+    - strip_trailing_serial: "_<digits>"   # e.g., _1, _2, ...
+    - trim_edge_underscores: true
+    - standardize_parentheses:             # (present) -> present, (planned or suspected) -> planned_suspected
+        - "(present)": "present"
+        - "(planned or suspected)": "planned_suspected"
+        - "(planned_or_suspected)": "planned_suspected"
+
+# --------------------------------
+# Token-level typo & wording fixes
+# --------------------------------
+fixes:
+  # typos
+  "intrest": "interest"
+  "ordance": "ordnance"
+  "motar": "mortar"
+  "regement": "regiment"
+
+  # British/US variants & harmonization
+  "air_defence": "air_defense"
+  "armoured": "armour"
+
+  # compound concept keepers (no-op but documents consistency)
+  "axis_of_advance": "axis_of_advance"
+  "air_defense": "air_defense"
+
+  # atomic glyph unification
+  "g_tri_nose": "g_arch_round"
+
+  # role-level harmonization
+  "mobile_infantry": "role_mobile_infantry"
+  "mountain_infantry": "role_mountain_infantry"
+  "attack_helicopter": "role_attack_helicopter"
+  "assault_lift_helicopter": "role_assault_lift_helicopter"
+  "artillery": "role_artillery"
+
+  # rocket launcher naming (light -> short_range)
+  "light_anti_tank_rocket_launcher": "short_range_anti_tank_rocket_launcher"
+
+# ---------------------------------------------------------
+# Explicit filename → canonical (when names are messy/unique)
+# ---------------------------------------------------------
+explicit:
+  # Axes of advance (spaces/mixed case)
+  "Airborne or Aviation axis of advance.png": "airborne_or_aviation_axis_of_advance"
+  "Attack helicopter Axis of Advance.png": "attack_helicopter_axis_of_advance"
+  "Main Axis of Advance.png": "main_axis_of_advance"
+  "Supporting Axis of Advance.png": "supporting_axis_of_advance"
+
+  # Boundaries (typos/parentheses)
+  "Regement Boundary(Present).png": "regiment_boundary_present"
+  "Regiment Boundary(Planned or Suspected).png": "regiment_boundary_planned_suspected"
+
+  # AD base & generic missile
+  "Primitive Air Defense base.png": "primitive_air_defense_base"
+  "Primitive Air Defense base.jpg": "primitive_air_defense_base"
+  "Generic Missile.jpg": "generic_missile"
+  "short.jpg": "short_range_missile"
+
+  # Special punctuation / comma
+  "Armored, Wheeled High-Mobility Vehicle with Medium Gun System.png": "armored_wheeled_medium_gun_system"
+
+  # UI/atomic helpers that sometimes appear with odd casing
+  "Grouping Brackets.png": "grouping_brackets"
+  "Bridgehead.png": "bridgehead"
+  "pill.png": "pill"
+  "capsule_small_top.jpg": "capsule_small_top"
+  "g_chevron_up.jpg": "g_chevron_up"
+  "g_stem_v.jpg": "g_stem_v"
+
+# ---------------------------------------------------------
+# Stem equivalence (by normalized stem AFTER normalizer)
+# Use this to unify families or map old names to canonical.
+# ---------------------------------------------------------
+stem_equiv:
+  # frames
+  "frame_friendly_rect": "frame_friendly_rect"
+  "frame_hostile_rect": "frame_hostile_rect"
+
+  # echelons (keep platoon since it exists in sketches)
+  "echelon_crew": "echelon_crew"
+  "echelon_squad": "echelon_squad"
+  "echelon_section": "echelon_section"
+  "echelon_platoon": "echelon_platoon"
+  "echelon_company_battery_squadron": "echelon_company_battery_squadron"
+  "echelon_regiment_battalion": "echelon_regiment_battalion"
+  "echelon_brigade": "echelon_brigade"
+  "echelon_division": "echelon_division"
+  "echelon_corps": "echelon_corps"
+  "echelon_command_army": "echelon_command_army"
+
+  # status
+  "status_reinforced": "status_reinforced"
+  "status_reduced": "status_reduced"
+  "status_reinforced_and_reduced": "status_reinforced_and_reduced"
+
+  # roles (core)
+  "role_infantry": "role_infantry"
+  "role_armour": "role_armour"
+  "role_mortar": "role_mortar"
+  "role_engineer": "role_engineer"
+  "role_eme": "role_eme"
+  "role_parachute": "role_parachute"
+  "role_medical": "role_medical"
+  "role_amm_ordnance": "role_amm_ordnance"
+  "role_uav": "role_uav"
+  "role_signals_bolt": "role_signals_bolt"
+  "role_anti_tank": "role_anti_tank"
+  "role_mechanized_infantry": "role_mechanized_infantry"
+  "role_mobile_infantry": "role_mobile_infantry"
+  "role_mountain_infantry": "role_mountain_infantry"
+  "role_air_assault_infantry": "role_air_assault_infantry"
+  "role_airborne_infantry": "role_airborne_infantry"
+  "role_attack_helicopter": "role_attack_helicopter"
+  "role_assault_lift_helicopter": "role_assault_lift_helicopter"
+  "role_combined_arms": "role_combined_arms"
+  "role_artillery": "role_artillery"
+
+  # mobility
+  "wheeled_limited_mobility": "wheeled_limited_mobility"
+  "wheeled_high_mobility": "wheeled_high_mobility"
+  "tracked": "tracked"
+  "towed": "towed"
+
+  # capabilities / weapons
+  "generic_grenade_launcher": "generic_grenade_launcher"
+  "generic_anti_tank_gun": "generic_anti_tank_gun"
+  "light_anti_tank_gun": "light_anti_tank_gun"
+  "medium_anti_tank_gun": "medium_anti_tank_gun"
+  "heavy_anti_tank_gun": "heavy_anti_tank_gun"
+  "light_howitzer": "light_howitzer"
+  "medium_howitzer": "medium_howitzer"
+  "heavy_howitzer": "heavy_howitzer"
+  "lmg": "lmg"
+  "mmg": "mmg"
+  "hmg": "hmg"   # keep for future if added
+  "anti_tank_recoilless_gun": "anti_tank_recoilless_gun"
+
+  # missiles (generic + AD + ranges)
+  "generic_missile": "generic_missile"
+  "short_range_missile": "short_range_missile"
+  "long_range_missile": "long_range_missile"
+  "generic_air_defense_missile": "generic_air_defense_missile"
+  "medium_range_air_defense_missile": "medium_range_air_defense_missile"
+  "long_range_air_defense_missile": "long_range_air_defense_missile"
+  "short_range_air_defense_missile": "short_range_air_defense_missile"   # allow if appears later
+
+  # AT rocket launchers (normalize 'light' → 'short_range')
+  "short_range_anti_tank_rocket_launcher": "short_range_anti_tank_rocket_launcher"
+  "medium_range_anti_tank_rocket_launcher": "medium_range_anti_tank_rocket_launcher"
+  "long_range_anti_tank_rocket_launcher": "long_range_anti_tank_rocket_launcher"
+
+  # special vehicle
+  "armored_wheeled_medium_gun_system": "armored_wheeled_medium_gun_system"
+
+  # CM (area control measures)
+  "cm_airfield_basic": "cm_airfield_basic"
+  "cm_airfield_advanced": "cm_airfield_advanced"
+  "cm_named_area_of_interest": "cm_named_area_of_interest"
+  "cm_objective_area": "cm_objective_area"
+  "cm_target_area_of_interest": "cm_target_area_of_interest"
+  "cm_temporary_helicopter_area": "cm_temporary_helicopter_area"
+  "cm_corps_support_area": "cm_corps_support_area"
+  "cm_drop_zone": "cm_drop_zone"
+  "cm_landing_zone": "cm_landing_zone"
+  "cm_release_point": "cm_release_point"
+  "cm_start_point": "cm_start_point"
+  "cm_mine_field_area": "cm_mine_field_area"
+  "cm_anti_tank_ditch": "cm_anti_tank_ditch"
+
+  # axes of advance
+  "airborne_or_aviation_axis_of_advance": "airborne_or_aviation_axis_of_advance"
+  "attack_helicopter_axis_of_advance": "attack_helicopter_axis_of_advance"
+  "supporting_axis_of_advance": "supporting_axis_of_advance"
+  "main_axis_of_advance": "main_axis_of_advance"
+
+  # boundaries / misc
+  "regiment_boundary_present": "regiment_boundary_present"
+  "regiment_boundary_planned_suspected": "regiment_boundary_planned_suspected"
+  "grouping_brackets": "grouping_brackets"
+  "alternate_usage_construct": "alternate_usage_construct"
+  "bridgehead": "bridgehead"
+
+  # atomic glyphs (for composition learning)
+  "g_arch_round": "g_arch_round"
+  "g_chevron_up": "g_chevron_up"
+  "g_mountain_peak": "g_mountain_peak"
+  "g_stem_v": "g_stem_v"
+  "g_bar_h": "g_bar_h"
+  "missile_base": "missile_base"
+  "howitzer_base": "howitzer_base"
+  "primitive_air_defense_base": "primitive_air_defense_base"
+  "pill": "pill"
+  "capsule_small_top": "capsule_small_top"
+
+  # legacy stems from sketches to canonical
+  "role_amm_ordance": "role_amm_ordnance"
+  "role_motar": "role_mortar"
+  "cm_named_area_of_intrest": "cm_named_area_of_interest"
+  "cm_target_area_of_intrest": "cm_target_area_of_interest"
+  "how_base": "howitzer_base"
+  "how_light": "light_howitzer"
+  "how_medium": "medium_howitzer"
+  "how_heavy": "heavy_howitzer"
+  "missile_short_range": "short_range_missile"
+
+# ---------------------------------------------------------
+# Canonical classes grouped (training/UI reference)
+# ---------------------------------------------------------
+groups:
+  frames:
+    - frame_friendly_rect
+    - frame_hostile_rect
+
+  echelons:
+    - echelon_crew
+    - echelon_squad
+    - echelon_section
+    - echelon_platoon
+    - echelon_company_battery_squadron
+    - echelon_regiment_battalion
+    - echelon_brigade
+    - echelon_division
+    - echelon_corps
+    - echelon_command_army
+
+  status:
+    - status_reinforced
+    - status_reduced
+    - status_reinforced_and_reduced
+
+  roles:
+    - role_infantry
+    - role_armour
+    - role_mortar
+    - role_engineer
+    - role_eme
+    - role_parachute
+    - role_medical
+    - role_amm_ordnance
+    - role_uav
+    - role_signals_bolt
+    - role_anti_tank
+    - role_mechanized_infantry
+    - role_mobile_infantry
+    - role_mountain_infantry
+    - role_air_assault_infantry
+    - role_airborne_infantry
+    - role_attack_helicopter
+    - role_assault_lift_helicopter
+    - role_combined_arms
+    - role_artillery
+
+  mobility:
+    - wheeled_limited_mobility
+    - wheeled_high_mobility
+    - tracked
+    - towed
+
+  capabilities_weapons:
+    - generic_grenade_launcher
+    - generic_anti_tank_gun
+    - light_anti_tank_gun
+    - medium_anti_tank_gun
+    - heavy_anti_tank_gun
+    - light_howitzer
+    - medium_howitzer
+    - heavy_howitzer
+    - lmg
+    - mmg
+    - hmg
+    - anti_tank_recoilless_gun
+    - armored_wheeled_medium_gun_system
+
+  missiles:
+    - generic_missile
+    - short_range_missile
+    - long_range_missile
+    - generic_air_defense_missile
+    - short_range_air_defense_missile
+    - medium_range_air_defense_missile
+    - long_range_air_defense_missile
+    - short_range_anti_tank_rocket_launcher
+    - medium_range_anti_tank_rocket_launcher
+    - long_range_anti_tank_rocket_launcher
+
+  control_measures:
+    - cm_airfield_basic
+    - cm_airfield_advanced
+    - cm_named_area_of_interest
+    - cm_objective_area
+    - cm_target_area_of_interest
+    - cm_temporary_helicopter_area
+    - cm_corps_support_area
+    - cm_drop_zone
+    - cm_landing_zone
+    - cm_release_point
+    - cm_start_point
+    - cm_mine_field_area
+    - cm_anti_tank_ditch
+
+  axes_of_advance:
+    - airborne_or_aviation_axis_of_advance
+    - attack_helicopter_axis_of_advance
+    - supporting_axis_of_advance
+    - main_axis_of_advance
+
+  boundaries_misc:
+    - regiment_boundary_present
+    - regiment_boundary_planned_suspected
+    - grouping_brackets
+    - alternate_usage_construct
+    - bridgehead
+
+  atomic_glyphs:
+    - g_arch_round
+    - g_chevron_up
+    - g_mountain_peak
+    - g_stem_v
+    - g_bar_h
+    - missile_base
+    - howitzer_base
+    - primitive_air_defense_base
+    - pill
+    - capsule_small_top
+
+# Flat list for training order (optional; otherwise derive by concatenating groups above)
+canonical_classes:
+  - frame_friendly_rect
+  - frame_hostile_rect
+  - echelon_crew
+  - echelon_squad
+  - echelon_section
+  - echelon_platoon
+  - echelon_company_battery_squadron
+  - echelon_regiment_battalion
+  - echelon_brigade
+  - echelon_division
+  - echelon_corps
+  - echelon_command_army
+  - status_reinforced
+  - status_reduced
+  - status_reinforced_and_reduced
+  - role_infantry
+  - role_armour
+  - role_mortar
+  - role_engineer
+  - role_eme
+  - role_parachute
+  - role_medical
+  - role_amm_ordnance
+  - role_uav
+  - role_signals_bolt
+  - role_anti_tank
+  - role_mechanized_infantry
+  - role_mobile_infantry
+  - role_mountain_infantry
+  - role_air_assault_infantry
+  - role_airborne_infantry
+  - role_attack_helicopter
+  - role_assault_lift_helicopter
+  - role_combined_arms
+  - role_artillery
+  - wheeled_limited_mobility
+  - wheeled_high_mobility
+  - tracked
+  - towed
+  - generic_grenade_launcher
+  - generic_anti_tank_gun
+  - light_anti_tank_gun
+  - medium_anti_tank_gun
+  - heavy_anti_tank_gun
+  - light_howitzer
+  - medium_howitzer
+  - heavy_howitzer
+  - lmg
+  - mmg
+  - hmg
+  - anti_tank_recoilless_gun
+  - armored_wheeled_medium_gun_system
+  - generic_missile
+  - short_range_missile
+  - long_range_missile
+  - generic_air_defense_missile
+  - short_range_air_defense_missile
+  - medium_range_air_defense_missile
+  - long_range_air_defense_missile
+  - short_range_anti_tank_rocket_launcher
+  - medium_range_anti_tank_rocket_launcher
+  - long_range_anti_tank_rocket_launcher
+  - cm_airfield_basic
+  - cm_airfield_advanced
+  - cm_named_area_of_interest
+  - cm_objective_area
+  - cm_target_area_of_interest
+  - cm_temporary_helicopter_area
+  - cm_corps_support_area
+  - cm_drop_zone
+  - cm_landing_zone
+  - cm_release_point
+  - cm_start_point
+  - cm_mine_field_area
+  - cm_anti_tank_ditch
+  - airborne_or_aviation_axis_of_advance
+  - attack_helicopter_axis_of_advance
+  - supporting_axis_of_advance
+  - main_axis_of_advance
+  - regiment_boundary_present
+  - regiment_boundary_planned_suspected
+  - grouping_brackets
+  - alternate_usage_construct
+  - bridgehead
+  - g_arch_round
+  - g_chevron_up
+  - g_mountain_peak
+  - g_stem_v
+  - g_bar_h
+  - missile_base
+  - howitzer_base
+  - primitive_air_defense_base
+  - pill
+  - capsule_small_top

@@ -1,0 +1,358 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------- Page & Fonts ----------
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[english]{babel}
+\usepackage{microtype}
+
+% ---------- Tables ----------
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{tabularx}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+% ---------- Colors, Links ----------
+\usepackage{xcolor}
+\definecolor{linkblue}{HTML}{1B4F72}
+\usepackage{hyperref}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=linkblue,
+  citecolor=linkblue,
+  urlcolor=linkblue
+}
+
+% ---------- Code Listings ----------
+\usepackage{listings}
+\definecolor{codebg}{RGB}{248,248,248}
+\definecolor{coderule}{RGB}{200,200,200}
+\definecolor{missingfile}{RGB}{180,0,0}
+\lstdefinestyle{repo}{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codebg},
+  frame=single,
+  rulecolor=\color{coderule},
+  numbers=left,
+  numberstyle=\tiny,
+  stepnumber=1,
+  numbersep=8pt,
+  showstringspaces=false,
+  tabsize=2,
+  breaklines=true,
+  breakatwhitespace=false
+}
+\lstset{style=repo}
+
+% Safe listings include for Overleaf: compiles even if a file isn't uploaded.
+\newcommand{\CodeFile}[1]{%
+  \IfFileExists{\detokenize{#1}}{%
+    \lstinputlisting{\detokenize{#1}}%
+  }{%
+    \noindent\textcolor{missingfile}{\textbf{Missing in Overleaf project:} \texttt{#1}}\\
+    \textit{Upload this file (and folders) to Overleaf to render the line-by-line listing.}%
+  }%
+}
+
+% ---------- Title ----------
+\title{\textbf{Symbols-AI: Implementation \& Training Report}\\[2pt]
+\large Primitive Training, Augmentation, App Integration, and OCR}
+\author{Generated from current repository state}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+\newpage
+
+% =========================================================
+\section{Scope}
+This report documents what has been implemented in the repository so far, with a focus on:
+\begin{itemize}
+  \item dataset organization (\texttt{normal\_images}, \texttt{sketches}, \texttt{augmented}, EMNIST);
+  \item the augmentation pipeline (\texttt{dataset/augment.py});
+  \item primitive symbol training scripts (\texttt{src/train\_augmented\_*.py});
+  \item the desktop application (\texttt{symbol\_builder\_appV11.py});
+  \item handwritten digit OCR integration (\texttt{src/ocr\_digits.py} + app button).
+\end{itemize}
+
+\paragraph{Note on ``line-by-line''.}
+The \emph{Appendix} includes full source listings with line numbers using \texttt{\textbackslash lstinputlisting}. This provides the requested line-by-line view in a single PDF, while the main sections explain the intent and behavior of each module.
+
+% When using Overleaf, upload the repo files preserving folders and compile this .tex from the project root.
+
+% =========================================================
+\section{Repository Layout (Relevant Files)}
+\begin{longtable}{@{}p{0.34\textwidth}p{0.62\textwidth}@{}}
+\toprule
+\textbf{Path} & \textbf{Purpose} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Path} & \textbf{Purpose} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{2}{r}{\small\emph{Continued on next page}}\\
+\midrule
+\endfoot
+\bottomrule
+\endlastfoot
+
+\texttt{dataset/normal\_images/} & Canonical symbol primitives (one file per primitive). \\
+\texttt{dataset/sketches/} & Hand-drawn sketches corresponding to primitives (often multiple variants). \\
+\texttt{dataset/augmented/} & Generated augmented training set (produced by \texttt{dataset/augment.py}). \\
+\texttt{dataset/emnist/} & EMNIST CSV+mapping dataset for OCR training (digits/letters/balanced/etc.). \\
+\texttt{dataset/augment.py} & Augments images from normal+sketch+feedback sources and writes to \texttt{augmented/}. \\
+\texttt{rules.yaml} & Canonical class definitions, normalizer rules, and groupings used by training/app UI. \\
+\texttt{rules\_parser.py} & Normalization and class discovery helpers derived from \texttt{rules.yaml}. \\
+\texttt{models/primitive\_labels\_kfold.json} & Label order used for training and for app inference class mapping. \\
+\texttt{src/train\_augmented\_kfold.py} & Main robust primitive training script (ConvNeXt + stratified folds, saves best). \\
+\texttt{src/train\_augmented\_advanced.py} & Alternative/experimental ``advanced'' training script (MaxViT). \\
+\texttt{src/train\_augmented.py} & Baseline training script (EfficientNet by default). \\
+\texttt{src/ocr\_digits.py} & Lightweight CNN OCR training/inference on EMNIST and segmentation for 0--99. \\
+\texttt{symbol\_builder\_appV11.py} & Desktop Tkinter application: palette, canvas, drawing, detection, feedback logging. \\
+\texttt{src/serve\_app.py} & Optional Gradio server attempt to run inference remotely via a browser UI. \\
+\texttt{src/utils/training\_plots.py} & Utility to save training curves to \texttt{models/plots/}. \\
+\end{longtable}
+
+% =========================================================
+\section{Datasets and Class Taxonomy}
+\subsection{Primitive Symbol Classes}
+Primitive classes are defined via:
+\begin{itemize}
+  \item \texttt{rules.yaml}: \texttt{canonical\_classes} and \texttt{groups} (frames/echelons/roles/etc.);
+  \item \texttt{models/primitive\_labels\_kfold.json}: explicit class order used by \texttt{src/train\_augmented\_kfold.py} and the desktop app.
+\end{itemize}
+
+\paragraph{Observed counts (current repository state).}
+\begin{itemize}
+  \item \texttt{models/primitive\_labels\_kfold.json}: 91 labels (dict-based mapping index $\rightarrow$ label).
+  \item \texttt{rules.yaml} \texttt{canonical\_classes}: 94 labels.
+\end{itemize}
+
+\paragraph{Normalization.}
+\texttt{rules\_parser.py} implements name normalization (stem cleanup, standardizing parentheses, typos, etc.) so that filenames from \texttt{normal\_images} and \texttt{sketches} map to canonical labels.
+
+\subsection{Augmented Dataset}
+\texttt{dataset/augment.py} merges sources from:
+\begin{itemize}
+  \item \textbf{normal images}: \texttt{dataset/normal\_images};
+  \item \textbf{sketches}: \texttt{dataset/sketches};
+  \item \textbf{feedback images}: user-corrected examples captured during app testing (via \texttt{models/logs/prediction\_feedback.jsonl}).
+\end{itemize}
+Output images are written into \texttt{dataset/augmented} with filenames encoding:
+\begin{itemize}
+  \item canonical label,
+  \item domain/source (\texttt{normal}, \texttt{sketch}, \texttt{feedback}),
+  \item a color tag (\texttt{default}/\texttt{red}/\texttt{green}/\texttt{blue}/\texttt{black}),
+  \item augmentation and global indices.
+\end{itemize}
+
+\subsection{Digit OCR Dataset (EMNIST)}
+Digits are trained from EMNIST CSV files in \texttt{dataset/emnist}. The repo includes multiple splits:
+\begin{itemize}
+  \item \texttt{emnist-digits-*} (10 classes: 0--9),
+  \item \texttt{emnist-balanced-*} (47 classes: digits + letters subset),
+  \item \texttt{emnist-bymerge/byclass/letters/mnist} (other class sets).
+\end{itemize}
+
+For digit-only OCR (0--9), the recommended split is \texttt{digits}. For OCR weights trained on \texttt{balanced} (47 classes), the mapping file \texttt{emnist-balanced-mapping.txt} must be used.
+
+% =========================================================
+\section{Augmentation Pipeline (\texttt{dataset/augment.py})}
+\subsection{Goals}
+The augmentation pipeline was introduced to:
+\begin{itemize}
+  \item increase training diversity (rotation/shift/warp/noise),
+  \item reduce model confusion by producing many variants per class,
+  \item incorporate user feedback images as additional sources,
+  \item add doctrinally relevant color cues (outline-only coloring):
+    \begin{itemize}
+      \item \textbf{hostile frames} $\rightarrow$ red outline variants,
+      \item \textbf{friendly/neutral} $\rightarrow$ black and blue outline variants,
+      \item specific control measures (e.g. \texttt{cm\_mine\_field\_area}) $\rightarrow$ green outline variants.
+    \end{itemize}
+\end{itemize}
+
+\subsection{Key Implementation Details}
+\begin{itemize}
+  \item Uses \texttt{rules.yaml} and \texttt{rules\_parser.canonical\_label()} to map filenames to canonical labels.
+  \item Uses \texttt{primitive\_labels\_kfold.json} to ensure label coverage even if \texttt{rules.yaml} has drift.
+  \item Reads feedback labels and image paths from \texttt{models/logs/prediction\_feedback.jsonl}.
+  \item Applies randomized transform pipelines (geometric + photometric + noise + stroke morphology).
+  \item Writes normalized outputs as \texttt{256x256} images (padding with white background).
+  \item Computes per-source copy counts to target a global \texttt{TARGET\_COUNT} and boosts priority classes.
+\end{itemize}
+
+% =========================================================
+\section{Primitive Training (Models, Scripts, and Techniques)}
+\subsection{Baseline Training: \texttt{src/train\_augmented.py}}
+\paragraph{Purpose.}
+Simple ``train on everything'' loop (no train/val split) with a configurable timm model.
+\paragraph{Model(s).}
+Default is \texttt{efficientnet\_b0} (pretrained).
+\paragraph{Outputs.}
+Saves a \texttt{.pth} checkpoint and writes a label map JSON and a training plot.
+
+\subsection{Advanced Training: \texttt{src/train\_augmented\_advanced.py}}
+\paragraph{Purpose.}
+Experiment with a larger architecture (MaxViT) and stronger fine-tuning knobs.
+\paragraph{Model(s).}
+Default \texttt{maxvit\_large\_tf\_384.in21k\_ft\_in1k}.
+\paragraph{Techniques used.}
+\begin{itemize}
+  \item Mixed precision (AMP),
+  \item MixUp,
+  \item Label smoothing,
+  \item AdamW + cosine annealing + warmup,
+  \item Gradient clipping,
+  \item Saving plots/logs to \texttt{models/plots} and \texttt{models/logs}.
+\end{itemize}
+
+\subsection{Robust Training: \texttt{src/train\_augmented\_kfold.py}}
+\paragraph{Purpose.}
+Stratified k-fold evaluation/training to find a best-performing checkpoint, then copy it to a single canonical file.
+\paragraph{Model(s).}
+Default \texttt{convnext\_xxlarge.clip\_laion2b\_soup\_ft\_in1k}.
+\paragraph{Techniques used.}
+\begin{itemize}
+  \item Stratified folds based on label indices,
+  \item Strong torchvision augmentation: AutoAugment, ColorJitter, RandomErasing,
+  \item MixUp,
+  \item Label smoothing,
+  \item AdamW + cosine LR schedule + warmup,
+  \item Dropout/drop-path in the timm model configuration,
+  \item Saves per-fold history to JSON and summarizes best fold.
+\end{itemize}
+
+\subsection{Other Models Attempted (Observed in Repo Artifacts)}
+The \texttt{models/} directory contains additional checkpoints indicating experiments with:
+\begin{itemize}
+  \item ViT/CLIP variants (e.g. \texttt{vit\_large\_patch14\_clip\_224.openai\_ft\_in12k\_in1k}),
+  \item intermediate fold checkpoints,
+  \item successive ``best'' primitive classifiers (\texttt{primitive\_classifier\_best/newbest/feedback\_auto}).
+\end{itemize}
+
+% =========================================================
+\section{Desktop Application (\texttt{symbol\_builder\_appV11.py})}
+\subsection{UI Features}
+\begin{itemize}
+  \item Left palette panel populated from \texttt{dataset/normal\_images}.
+  \item Center board canvas supports:
+    \begin{itemize}
+      \item drag-and-drop placement of primitives,
+      \item a sketch/drawing layer (hand-drawn input),
+      \item multiple map layers (overlay UI).
+    \end{itemize}
+  \item Right panel contains tabs (Notebook) for map layers and inspector/doctrine analysis.
+  \item Toolbar actions: choose folder, reload, upload symbol(s), delete selected, clear board, map layer management, draw toggle, color selection, detection actions.
+\end{itemize}
+
+\subsection{Model-Based Detection (Primitives)}
+\begin{itemize}
+  \item Loads a timm model architecture (\texttt{DEFAULT\_MODEL\_NAME}) and a \texttt{.pth} state dict.
+  \item Loads label mapping from \texttt{models/primitive\_labels\_kfold.json}.
+  \item ``Detect Symbol'' runs inference over a rendered canvas and surfaces top-k predictions.
+  \item Feedback logging captures user confirmation/rejection to \texttt{models/logs/prediction\_feedback.jsonl}.
+\end{itemize}
+
+\subsection{Rules / Doctrine Integration}
+\begin{itemize}
+  \item Loads \texttt{rules.yaml} (if \texttt{PyYAML} is installed) via \texttt{DoctrineEngine}.
+  \item Uses the rule groups to categorize palette items (Frames, Echelon, Status, Roles, Mobility, etc.).
+  \item Provides a ``Doctrine Analyze'' flow to validate symbol composition constraints.
+\end{itemize}
+
+% =========================================================
+\section{Digit OCR Integration (0--99 Support)}
+\subsection{OCR Model (\texttt{src/ocr\_digits.py})}
+\begin{itemize}
+  \item Loads EMNIST CSVs and caches to NPZ for faster re-runs.
+  \item Fixes EMNIST image orientation (transpose + horizontal flip) to match standard display.
+  \item Uses a small CNN (\texttt{SmallCNN}) for classification.
+  \item Adds polarity normalization so input can be either black-on-white or white-on-black.
+  \item Implements \texttt{segment\_digits()} and \texttt{predict\_sequence(...)} for 1--2 digit decoding (0--99).
+\end{itemize}
+
+\subsection{OCR in App (\texttt{symbol\_builder\_appV11.py})}
+\begin{itemize}
+  \item ``Detect Digits'' button runs OCR on the current board render (or prompts for an image).
+  \item Auto-loads OCR weights from \texttt{models/ocr\_digits\_best.pth}.
+  \item Selects an EMNIST mapping file that matches the checkpoint output layer shape:
+    \begin{itemize}
+      \item 10-class $\rightarrow$ digits mapping,
+      \item 47-class $\rightarrow$ balanced mapping,
+      \item fallback: try all mapping files until one loads successfully.
+    \end{itemize}
+  \item Uses \texttt{predict\_sequence(max\_digits=2)} when available to produce 0--99 results.
+\end{itemize}
+
+% =========================================================
+\section{How to Reproduce (Local)}
+\subsection{Augment}
+\begin{lstlisting}[style=repo]
+python dataset/augment.py
+\end{lstlisting}
+Outputs: \texttt{dataset/augmented/*.png}
+
+\subsection{Train Primitive Classifier (k-fold and best)}
+\begin{lstlisting}[style=repo]
+python src/train_augmented_kfold.py --folds 5 --epochs 25 --img-size 384
+\end{lstlisting}
+Outputs (key):
+\begin{itemize}
+  \item \texttt{models/primitive\_classifier\_best.pth} (best fold copied here),
+  \item fold checkpoints \texttt{models/primitive\_classifier\_fold*.pth},
+  \item training logs \texttt{models/logs/*.json}.
+\end{itemize}
+
+\subsection{Train Digit OCR (recommended 10-class)}
+\begin{lstlisting}[style=repo]
+python src/ocr_digits.py --train --split digits --epochs 8 --output models/ocr_digits_10cls.pth
+\end{lstlisting}
+
+\subsection{Run Desktop App}
+\begin{lstlisting}[style=repo]
+python symbol_builder_appV11.py
+\end{lstlisting}
+
+% =========================================================
+\appendix
+\section{Appendix: Full Source Listings (Line-by-Line)}
+\subsection{\texttt{symbol\_builder\_appV11.py}}
+\CodeFile{symbol_builder_appV11.py}
+
+\subsection{\texttt{dataset/augment.py}}
+\CodeFile{dataset/augment.py}
+
+\subsection{\texttt{src/train\_augmented\_kfold.py}}
+\CodeFile{src/train_augmented_kfold.py}
+
+\subsection{\texttt{src/train\_augmented\_advanced.py}}
+\CodeFile{src/train_augmented_advanced.py}
+
+\subsection{\texttt{src/train\_augmented.py}}
+\CodeFile{src/train_augmented.py}
+
+\subsection{\texttt{src/ocr\_digits.py}}
+\CodeFile{src/ocr_digits.py}
+
+\subsection{\texttt{src/serve\_app.py}}
+\CodeFile{src/serve_app.py}
+
+\subsection{\texttt{rules.yaml}}
+\CodeFile{rules.yaml}
+
+\subsection{\texttt{models/primitive\_labels\_kfold.json}}
+\CodeFile{models/primitive_labels_kfold.json}
+
+\subsection{\texttt{rules\_parser.py}}
+\CodeFile{rules_parser.py}
+
+\subsection{\texttt{src/utils/training\_plots.py}}
+\CodeFile{src/utils/training_plots.py}
+
+\end{document}

@@ -1,0 +1,464 @@
+﻿version: "1.0"
+meta:
+  name: "Indian Army Symbol Doctrine (Builder/Detector)"
+  source_basis:
+    - "FM 1-02-2 style (adapted)"
+    - "Finalized_Indian_army_Symbology_5 set provided by user"
+  intent: "Deterministic identification of composite unit symbols and map graphics"
+
+ontology:
+  frames:
+    friendly:
+      shape: "rectangle"
+    hostile:
+      shape: "rhombus"
+  roles:
+    - Infantry
+    - Engineer
+    - Signals
+    - EME
+    - Medical Services
+    - Ammunition
+    - Parachute
+    - UAV
+    - Tank
+    - Mortar
+    - Artillery
+    - Air Assault Infantry
+    - Airborne Infantry
+    - Anti-Tank
+    - Assault/Lift Helicopter
+    - Attack Helicopter
+    - Combined Arms
+    - Mechanized Infantry
+    - Mobile Infantry
+    - Mountain Infantry
+  echelons:
+    - Crew
+    - Squad
+    - Section
+    - Company/Battery/Squadron
+    - Regiment/Battalion
+    - Brigade
+    - Division
+    - Corps
+    - Command Army
+  status:
+    plus:
+      canonical: "Reinforced"
+      mark: "+"
+    minus:
+      canonical: "Reduced"
+      mark: "-"
+    plusminus:
+      canonical: "Reinforced and Reduced"
+      mark: "+/-"
+  mobility:
+    - "Wheeled (Limited)"
+    - "Wheeled (High)"
+    - "Tracked"
+    - "Towed"
+  capabilities:
+    - "Armored WHMV Medium Gun"
+    - "Generic Grenade Launcher"
+    - "Generic Anti-Tank Gun"
+    - "Light Anti-Tank Gun"
+    - "Medium Anti-Tank Gun"
+    - "Heavy Anti-Tank Gun"
+    - "Light Howitzer"
+    - "Medium Howitzer"
+    - "Heavy Howitzer"
+    - "Light Machine Gun"
+    - "Medium Machine Gun"
+    - "Heavy Machine Gun"
+    - "Short-Range Missile"
+    - "Long-Range Missile"
+    - "Generic Air Defense Missile"
+    - "Short-Range Air Defense Missile"
+    - "Long-Range Air Defense Missile"
+    - "Generic Anti-Tank Rocket Launcher"
+    - "Short-Range Anti-Tank Rocket Launcher"
+    - "Medium-Range Anti-Tank Rocket Launcher"
+    - "Long-Range Anti-Tank Rocket Launcher"
+    - "Anti-Tank Recoilless Gun"
+  amplifiers:
+    - "Direction of Movement"
+    - "Grouping Brackets"
+  graphics:
+    - "Regiment Boundary (Present)"
+    - "Regiment Boundary (Planned/Suspected)"
+    - "Airfield (Basic)"
+    - "Airfield (Advanced)"
+    - "Named Area of Interest"
+    - "Objective Area"
+    - "Target Area of Interest"
+    - "Temporary Helicopter Area"
+    - "Corps Support Area"
+    - "Drop Zone"
+    - "Landing Zone"
+    - "Release Point"
+    - "Start Point"
+    - "Airborne or Aviation Axis of Advance"
+    - "Attack Helicopter Axis of Advance"
+    - "Supporting Axis of Advance"
+    - "Main Axis of Advance"
+    - "Mine Field Area"
+    - "Anti-Tank Ditch"
+
+zones:
+  role:
+    rel_bbox: [0.20, 0.25, 0.80, 0.75]
+  echelon:
+    rel_bbox: [0.25, -0.18, 0.75, -0.02]
+    outside_top: true
+  status:
+    rel_bbox: [0.82, 0.02, 0.98, 0.18]
+  mobility:
+    rel_bbox: [0.02, 0.82, 0.28, 0.98]
+  capability:
+    rel_bbox: [0.72, 0.82, 0.98, 0.98]
+  unit_text:
+    anchor: "right_of_frame"
+    offset: [0.02, 0.00]
+
+placement_thresholds:
+  centroid_must_be_inside: true
+  min_iou_for_zone_accept: 0.20
+
+normalize:
+  roles:
+    "Artillery (Round dot inside the rectangle represents an artillery unit)": "Artillery"
+    "Assault or Lift Helicopter": "Assault/Lift Helicopter"
+    "Mobile Infantry (Stryker)": "Mobile Infantry"
+    "EME (Electronics and Mechanical Engineers)": "EME"
+  echelons:
+    "Regiment/battalion": "Regiment/Battalion"
+  capabilities:
+    "Armored, Wheeled High-Mobility Vehicle with Medium Gun System": "Armored WHMV Medium Gun"
+
+echelon_word_overrides:
+  "Company/Battery/Squadron":
+    roles_imply_battery:
+      - "Artillery"
+    capabilities_imply_battery_families:
+      - "Howitzer"
+    roles_imply_squadron:
+      - "Attack Helicopter"
+      - "Assault/Lift Helicopter"
+      - "UAV"
+    default: "Company"
+    resolved_order:
+      - "Battery"
+      - "Squadron"
+      - "Company"
+  "Regiment/Battalion":
+    roles_imply_regiment:
+      - "Tank"
+      - "Mechanized Infantry"
+      - "Combined Arms"
+    capabilities_imply_regiment_families:
+      - "AntiTankGun"
+    default: "Battalion"
+    resolved_order:
+      - "Regiment"
+      - "Battalion"
+
+capability_families:
+  VehicleGun:
+    members:
+      - "Armored WHMV Medium Gun"
+    priority:
+      - "Armored WHMV Medium Gun"
+  GrenadeLauncher:
+    members:
+      - "Generic Grenade Launcher"
+    priority:
+      - "Generic Grenade Launcher"
+  AntiTankGun:
+    members:
+      - "Generic Anti-Tank Gun"
+      - "Light Anti-Tank Gun"
+      - "Medium Anti-Tank Gun"
+      - "Heavy Anti-Tank Gun"
+    priority:
+      - "Heavy Anti-Tank Gun"
+      - "Medium Anti-Tank Gun"
+      - "Light Anti-Tank Gun"
+      - "Generic Anti-Tank Gun"
+  Howitzer:
+    members:
+      - "Light Howitzer"
+      - "Medium Howitzer"
+      - "Heavy Howitzer"
+    priority:
+      - "Heavy Howitzer"
+      - "Medium Howitzer"
+      - "Light Howitzer"
+  MachineGun:
+    members:
+      - "Light Machine Gun"
+      - "Medium Machine Gun"
+      - "Heavy Machine Gun"
+    priority:
+      - "Heavy Machine Gun"
+      - "Medium Machine Gun"
+      - "Light Machine Gun"
+  Missile:
+    members:
+      - "Short-Range Missile"
+      - "Long-Range Missile"
+    priority:
+      - "Long-Range Missile"
+      - "Short-Range Missile"
+  AirDefenseMissile:
+    members:
+      - "Generic Air Defense Missile"
+      - "Short-Range Air Defense Missile"
+      - "Long-Range Air Defense Missile"
+    priority:
+      - "Long-Range Air Defense Missile"
+      - "Short-Range Air Defense Missile"
+      - "Generic Air Defense Missile"
+  ATRocket:
+    members:
+      - "Generic Anti-Tank Rocket Launcher"
+      - "Short-Range Anti-Tank Rocket Launcher"
+      - "Medium-Range Anti-Tank Rocket Launcher"
+      - "Long-Range Anti-Tank Rocket Launcher"
+    priority:
+      - "Long-Range Anti-Tank Rocket Launcher"
+      - "Medium-Range Anti-Tank Rocket Launcher"
+      - "Short-Range Anti-Tank Rocket Launcher"
+      - "Generic Anti-Tank Rocket Launcher"
+  Recoilless:
+    members:
+      - "Anti-Tank Recoilless Gun"
+    priority:
+      - "Anti-Tank Recoilless Gun"
+
+validation:
+  required:
+    - when: "unit"
+      must_have:
+        - "frame"
+        - "role"
+  cardinality:
+    role:
+      min: 1
+      max: 1
+    echelon:
+      min: 0
+      max: 1
+    status:
+      min: 0
+      max: 1
+    mobility:
+      min: 0
+      max: 1
+    capability_per_family:
+      max: 1
+  placement:
+    enforce_zone: true
+    errors_if_outside_zone: false
+    warnings_if_outside_zone: true
+  compatibility:
+    - rule: "Towed mobility invalid for air platforms"
+      when:
+        role_in:
+          - "Attack Helicopter"
+          - "Assault/Lift Helicopter"
+          - "UAV"
+        mobility_is: "Towed"
+      action: "drop_mobility_warn"
+    - rule: "Non-combat service role with lethal capability"
+      when:
+        role_in:
+          - "Medical Services"
+          - "EME"
+        capability_family_in:
+          - "AntiTankGun"
+          - "Howitzer"
+          - "MachineGun"
+          - "Missile"
+          - "AirDefenseMissile"
+          - "ATRocket"
+          - "Recoilless"
+          - "VehicleGun"
+          - "GrenadeLauncher"
+      severity: "warning"
+  uniqueness:
+    - "No multiple roles"
+    - "No multiple echelons"
+  status_merge:
+    both_plus_and_minus_becomes: "plusminus"
+
+graphics:
+  general:
+    must_not_overlap_unit_frame_iou_gt: 0.30
+  kinds:
+    "Regiment Boundary (Present)":
+      geometry: "LineString"
+      style:
+        stroke: "solid"
+    "Regiment Boundary (Planned/Suspected)":
+      geometry: "LineString"
+      style:
+        stroke: "dashed"
+    "Airfield (Basic)":
+      geometry: "Polygon"
+      attributes:
+        - "name"
+        - "status"
+    "Airfield (Advanced)":
+      geometry: "Polygon"
+      attributes:
+        - "name"
+        - "status"
+    "Named Area of Interest":
+      geometry: "Polygon"
+      attributes:
+        - "name"
+    "Objective Area":
+      geometry: "Polygon"
+      attributes:
+        - "name"
+    "Target Area of Interest":
+      geometry: "Polygon"
+      attributes:
+        - "name"
+    "Temporary Helicopter Area":
+      geometry: "Polygon"
+      attributes:
+        - "name"
+    "Corps Support Area":
+      geometry: "Polygon"
+      attributes:
+        - "name"
+    "Drop Zone":
+      geometry: "Point"
+      attributes:
+        - "name"
+    "Landing Zone":
+      geometry: "Point"
+      attributes:
+        - "name"
+    "Release Point":
+      geometry: "Point"
+      attributes:
+        - "name"
+    "Start Point":
+      geometry: "Point"
+      attributes:
+        - "name"
+    "Airborne or Aviation Axis of Advance":
+      geometry: "LineString"
+      attributes:
+        - "name"
+        - "direction_deg"
+    "Attack Helicopter Axis of Advance":
+      geometry: "LineString"
+      attributes:
+        - "name"
+        - "direction_deg"
+    "Supporting Axis of Advance":
+      geometry: "LineString"
+      attributes:
+        - "name"
+        - "direction_deg"
+    "Main Axis of Advance":
+      geometry: "LineString"
+      attributes:
+        - "name"
+        - "direction_deg"
+    "Mine Field Area":
+      geometry: "Polygon"
+      attributes:
+        - "name"
+    "Anti-Tank Ditch":
+      geometry: "LineString"
+      attributes:
+        - "name"
+
+pipeline:
+  - "detect_frame_affiliation"
+  - "detect_zones_and_collect_components"
+  - "normalize_labels"
+  - "resolve_echelon_wording"
+  - "resolve_capability_conflicts_by_family"
+  - "apply_validation_rules"
+  - "compute_summary_and_strings"
+  - "emit_json"
+
+formatting:
+  unit:
+    template: "{affiliation} {role} {echelon}{status_suffix}{mobility_suffix}{capability_suffix}{unit_suffix}"
+    status_suffix:
+      Reinforced: " Reinforced"
+      Reduced: " Reduced"
+      "Reinforced and Reduced": " Reinforced and Reduced"
+    mobility_suffix:
+      "Wheeled (High)": " (Wheeled-High)"
+      "Wheeled (Limited)": " (Wheeled-Limited)"
+      "Tracked": " (Tracked)"
+      "Towed": " (Towed)"
+    capability_joiner: ", "
+    capability_prefix: " with "
+    unit_prefix: " - "
+  graphic:
+    template: "{kind}{qualifier}{label}"
+    qualifier_map:
+      "Regiment Boundary (Planned/Suspected)": " (Planned)"
+      "Regiment Boundary (Present)": " (Present)"
+    label_prefix: " - "
+
+output_schema:
+  type: "unit | graphic"
+  unit_fields:
+    - "affiliation"
+    - "frame_bbox"
+    - "echelon"
+    - "role"
+    - "status"
+    - "mobility"
+    - capabilities:
+        - "family"
+        - "name"
+    - amplifiers:
+        - "type"
+        - "heading_deg?"
+        - "members?"
+    - "unit_name"
+    - "canonical_name"
+    - "notes"
+  graphic_fields:
+    - "kind"
+    - "geometry"
+    - "style"
+    - "direction_deg?"
+    - "label"
+    - "canonical_name"
+    - "notes"
+
+policy:
+  severities:
+    - "info"
+    - "warning"
+    - "error"
+  on_multiple_roles:
+    severity: "error"
+    fix: "reject_extra"
+  on_multiple_echelons:
+    severity: "error"
+    fix: "reject_extra"
+  on_multi_capability_same_family:
+    severity: "warning"
+    fix: "keep_highest_priority"
+  on_status_plus_and_minus:
+    severity: "info"
+    fix: "coalesce_to_plusminus"
+  on_component_outside_zone:
+    severity: "warning"
+    fix: "keep_but_flag"
+  on_graphic_overlaps_unit_iou_gt_threshold:
+    severity: "error"
+    fix: "reclassify_or_separate"
