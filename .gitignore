@@ -21,6 +21,7 @@ dataset/augmented/
 # EMNIST CSVs are huge; keep scripts, download separately
 dataset/emnist/*.csv
 dataset/emnist/*.npz
+dataset/emnist/emnist_source_files/
 
 # Model weights can be extremely large (several GB)
 models/*.pth
@@ -31,4 +32,8 @@ models/*.pt
 # Optional outputs
 models/plots/*.png
 models/logs/feedback_images/
+models/logs/*history*.json
 
+# Notebooks / checkpoints
+.ipynb_checkpoints/
+*.ipynb
