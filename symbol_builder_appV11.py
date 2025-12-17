@@ -35,7 +35,7 @@ except ImportError:
     DigitOCR = None
 
 # ---------- Config ----------
-DEFAULT_SYMBOLS_DIR = r"C:\Users\mayan\projects\symbols-ai\dataset\normal_images"
+DEFAULT_SYMBOLS_DIR = str((ROOT_DIR / "dataset" / "normal_images").resolve())
 DEFAULT_MODEL_WEIGHTS = pathlib.Path(__file__).parent / "models" / "primitive_classifier_newbest.pth"
 DEFAULT_MODEL_LABELS = pathlib.Path(__file__).parent / "models" / "primitive_labels_kfold.json"
 DEFAULT_MODEL_NAME = "convnext_xxlarge.clip_laion2b_soup_ft_in1k"
