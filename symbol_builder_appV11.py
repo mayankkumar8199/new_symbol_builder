@@ -559,6 +559,7 @@ def _infer_num_classes_from_ocr_weights(weights_path: pathlib.Path) -> int | Non
         "net.9.weight",
         "fc.weight",
         "classifier.weight",
+        "classifier.4.weight",  # our digit CNN head
         "head.weight",
         "head.fc.weight",
     ):
@@ -922,6 +923,11 @@ class BoardCanvas(tk.Canvas):
         self.draw_color = color
 
     def clear_sketch(self):
+        # clear any OCR overlays tied to the sketch layer
+        try:
+            self.delete("ocr_digits_overlay")
+        except Exception:
+            pass
         if hasattr(self, "sketch_item"):
             self.delete(self.sketch_item)
         self._init_sketch_layer()
@@ -937,10 +943,27 @@ class BoardCanvas(tk.Canvas):
     def _draw_to_sketch(self, x0, y0, x1, y1):
         draw = ImageDraw.Draw(self.sketch_image)
         draw.line((x0, y0, x1, y1), fill=self.draw_color, width=4)
-        self.sketch_tk = ImageTk.PhotoImage(self.sketch_image)
-        self.itemconfig(self.sketch_item, image=self.sketch_tk)
+        try:
+            # Update in-place to avoid allocating a new PhotoImage on every stroke.
+            if getattr(self, "sketch_tk", None) is not None and hasattr(self.sketch_tk, "paste"):
+                self.sketch_tk.paste(self.sketch_image)
+            else:
+                self.sketch_tk = ImageTk.PhotoImage(self.sketch_image)
+                self.itemconfig(self.sketch_item, image=self.sketch_tk)
+        except Exception:
+            self.sketch_tk = ImageTk.PhotoImage(self.sketch_image)
+            self.itemconfig(self.sketch_item, image=self.sketch_tk)
         # also draw visible line on canvas for immediate feedback
-        line_id = self.create_line(x0, y0, x1, y1, fill=self.draw_color, width=3, capstyle="round")
+        line_id = self.create_line(
+            x0,
+            y0,
+            x1,
+            y1,
+            fill=self.draw_color,
+            width=3,
+            capstyle="round",
+            tags=("sketch_line",),
+        )
         self._sketch_lines.append(line_id)
         self.sketch_dirty = True
 
@@ -979,16 +1002,17 @@ class BoardCanvas(tk.Canvas):
         if self.draw_mode:
             self._draw_last = (ev.x, ev.y)
             return
-        hit = self.find_closest(ev.x, ev.y)
-        if hit and hit[0] in self.placed:
-            # Only start dragging if clicking the already selected symbol.
-            if self.selected_id == hit[0]:
-                self._drag["item"] = hit[0]
-                self._drag["x"], self._drag["y"] = ev.x, ev.y
-            else:
-                # Just select (no drag yet)
-                self._update_selection(hit[0])
-            return
+        # Prefer selecting real symbols even if sketch/overlay items are above them.
+        for item in reversed(self.find_overlapping(ev.x - 1, ev.y - 1, ev.x + 1, ev.y + 1)):
+            if item in self.placed:
+                # Only start dragging if clicking the already selected symbol.
+                if self.selected_id == item:
+                    self._drag["item"] = item
+                    self._drag["x"], self._drag["y"] = ev.x, ev.y
+                else:
+                    # Just select (no drag yet)
+                    self._update_selection(item)
+                return
         # click on empty area clears selection
         self._update_selection(None)
 
@@ -2190,9 +2214,16 @@ class App(tk.Tk):
             messagebox.showwarning("OCR", "\n".join(missing))
             return
         img = None
+        from_canvas = False
         if getattr(self, "board", None) and self.board.has_content():
             try:
-                img = self.board.render_to_image()
+                # Prefer the freehand sketch layer when present to avoid symbol clutter.
+                if getattr(self.board, "sketch_dirty", False) and getattr(self.board, "sketch_image", None) is not None:
+                    img = self.board.sketch_image.copy().convert("RGB")
+                    from_canvas = True
+                else:
+                    img = self.board.render_to_image()
+                    from_canvas = True
             except Exception:
                 img = None
         if img is None:
@@ -2205,8 +2236,57 @@ class App(tk.Tk):
             img = Image.open(path).convert("RGB")
 
         try:
+            # Prefer multi-number decoding when available.
+            results = None
+            if hasattr(self.digit_ocr, "predict_numbers"):
+                results = self.digit_ocr.predict_numbers(img, max_numbers=6, max_digits_per_number=7)
+            if results:
+                if from_canvas and getattr(self, "board", None) is not None:
+                    try:
+                        self.board.delete("ocr_digits_overlay")
+                    except Exception:
+                        pass
+                    cw = self.board.winfo_width() or CANVAS_SIZE[0]
+                    ch = self.board.winfo_height() or CANVAS_SIZE[1]
+                    iw, ih = img.size
+                    sx = cw / max(1, iw)
+                    sy = ch / max(1, ih)
+                    for digits, conf, bbox in results:
+                        x0, y0, x1, y1 = bbox
+                        cx0, cy0 = x0 * sx, y0 * sy
+                        cx1, cy1 = x1 * sx, y1 * sy
+                        self.board.create_rectangle(
+                            cx0,
+                            cy0,
+                            cx1,
+                            cy1,
+                            outline="#1B4F72",
+                            width=2,
+                            tags=("ocr_digits_overlay",),
+                        )
+                        ty = cy0 - 6
+                        anchor = "sw"
+                        if ty < 14:
+                            ty = cy1 + 6
+                            anchor = "nw"
+                        self.board.create_text(
+                            cx0 + 2,
+                            ty,
+                            text=f"{digits} ({conf:.2f})",
+                            fill="#1B4F72",
+                            font=("Segoe UI", 10, "bold"),
+                            anchor=anchor,
+                            tags=("ocr_digits_overlay",),
+                        )
+
+                msg = "\n".join([f"{s} (conf={c:.3f})" for s, c, _ in results])
+                joined = ", ".join([s for s, _, _ in results])
+                messagebox.showinfo("OCR", f"Detected number(s):\n{msg}")
+                self._update_status_label(f"OCR: {joined}")
+                return
+
             if hasattr(self.digit_ocr, "predict_sequence"):
-                label, conf = self.digit_ocr.predict_sequence(img, max_digits=2)
+                label, conf = self.digit_ocr.predict_sequence(img, max_digits=7)
             else:
                 label, conf = self.digit_ocr.predict(img)
         except Exception as exc:
@@ -2220,7 +2300,39 @@ class App(tk.Tk):
                 value = None
         else:
             value = None
-        if value is not None and 0 <= value <= 99:
+        if value is not None:
+            if from_canvas and getattr(self, "board", None) is not None:
+                try:
+                    self.board.delete("ocr_digits_overlay")
+                except Exception:
+                    pass
+                cw = self.board.winfo_width() or CANVAS_SIZE[0]
+                ch = self.board.winfo_height() or CANVAS_SIZE[1]
+                iw, ih = img.size
+                sx = cw / max(1, iw)
+                sy = ch / max(1, ih)
+                # Whole-image fallback bbox
+                cx0, cy0 = 4, 4
+                cx1, cy1 = cw - 4, ch - 4
+                self.board.create_rectangle(
+                    cx0,
+                    cy0,
+                    cx1,
+                    cy1,
+                    outline="#1B4F72",
+                    width=2,
+                    dash=(4, 2),
+                    tags=("ocr_digits_overlay",),
+                )
+                self.board.create_text(
+                    cx0 + 2,
+                    cy0 + 2,
+                    text=f"{value} ({conf:.2f})",
+                    fill="#1B4F72",
+                    font=("Segoe UI", 10, "bold"),
+                    anchor="nw",
+                    tags=("ocr_digits_overlay",),
+                )
             messagebox.showinfo("OCR", f"Detected number: {value} (conf={conf:.3f})")
             self._update_status_label(f"OCR: {value} ({conf:.2f})")
         else:
@@ -2234,6 +2346,10 @@ class App(tk.Tk):
 
     def _clear_sketch_only(self):
         if hasattr(self, "board"):
+            try:
+                self.board.delete("ocr_digits_overlay")
+            except Exception:
+                pass
             self.board.clear_sketch()
         self._update_status_label("Cleared drawing")
 
@@ -2260,6 +2376,10 @@ class App(tk.Tk):
             self._update_status_label(f"Uploaded {copied} file(s)")
 
     def _clear_board(self):
+        try:
+            self.board.delete("ocr_digits_overlay")
+        except Exception:
+            pass
         self.board.clear_board()
         self._update_status_label("Board cleared")
 

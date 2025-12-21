@@ -23,6 +23,11 @@ dataset/emnist/*.csv
 dataset/emnist/*.npz
 dataset/emnist/emnist_source_files/
 
+# Digit dataset prep outputs
+dataset/digits_raw/
+dataset/digits_dataset/
+dataset/ardis_extracted/
+
 # Model weights can be extremely large (several GB)
 models/*.pth
 models/*.pt
@@ -37,3 +42,6 @@ models/logs/*history*.json
 # Notebooks / checkpoints
 .ipynb_checkpoints/
 *.ipynb
+
+# Local tools
+tools/7zip/
