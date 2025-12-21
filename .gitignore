@@ -33,6 +33,7 @@ models/*.pth
 models/*.pt
 *.pth
 *.pt
+!models/ocr_digits_best.pth
 
 # Optional outputs
 models/plots/*.png
