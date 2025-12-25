@@ -50,6 +50,7 @@ AUTO_FT_SCRIPT = None
 AUTO_FT_OUTPUT = None
 _AUTO_FT_RUNNING = False
 PALETTE_WIDTH = 340
+PALETTE_COLLAPSED_WIDTH = 150
 RIGHT_PANEL_WIDTH = 360
 CANVAS_SIZE = (1100, 720)
 THUMB_SIZE = (96, 96)
@@ -678,16 +679,18 @@ def safe_copy_to_folder(src_path: str, dest_folder: str) -> str:
 
 # ---------- Palette ----------
 class SymbolPalette(ttk.Frame):
-    def __init__(self, master, on_start_drag, **kw):
+    def __init__(self, master, on_start_drag, on_expand_change=None, **kw):
         super().__init__(master, **kw)
         self.on_start_drag = on_start_drag
+        self.on_expand_change = on_expand_change
         self._imgrefs = {}
         self.folder = None
         self.files = []
         self._grouped = {}
         self._weapons = {}
         self._active_group = None
-        self._group_var = tk.StringVar(value="")
+        self._tab_buttons = {}
+        self._expanded = True
 
         # header (non-scroll)
         self.header = ttk.Label(self, text="Palette", font=("Segoe UI", 12, "bold"))
@@ -714,8 +717,17 @@ class SymbolPalette(ttk.Frame):
         self._inner_win = self.canvas.create_window((0, 0), window=self.inner, anchor="nw")
         self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfigure(self._inner_win, width=e.width))
         self.canvas.configure(yscrollcommand=self.sb.set)
+        self.canvas.configure(yscrollincrement=18)
         self.canvas.pack(side="left", fill="both", expand=True)
         self.sb.pack(side="right", fill="y")
+
+        # Mouse-wheel scrolling for the palette list (Windows/macOS/Linux).
+        self.canvas.bind("<MouseWheel>", self._on_mousewheel, add="+")
+        self.inner.bind("<MouseWheel>", self._on_mousewheel, add="+")
+        self.canvas.bind("<Button-4>", self._on_mousewheel, add="+")
+        self.canvas.bind("<Button-5>", self._on_mousewheel, add="+")
+        self.inner.bind("<Button-4>", self._on_mousewheel, add="+")
+        self.inner.bind("<Button-5>", self._on_mousewheel, add="+")
 
     def _recolor_frame_if_needed(self, pil: Image.Image, name: str) -> Image.Image:
         lname = name.lower()
@@ -737,10 +749,63 @@ class SymbolPalette(ttk.Frame):
             return blk
         return pil
 
+    def _on_mousewheel(self, event):
+        if not self._expanded:
+            return "break"
+        try:
+            # Linux uses Button-4/5
+            if getattr(event, "num", None) == 4:
+                self.canvas.yview_scroll(-3, "units")
+            elif getattr(event, "num", None) == 5:
+                self.canvas.yview_scroll(3, "units")
+            else:
+                delta = int(-1 * (event.delta / 120)) if getattr(event, "delta", 0) else 0
+                if delta == 0 and getattr(event, "delta", 0):
+                    delta = -1 if event.delta > 0 else 1
+                self.canvas.yview_scroll(delta, "units")
+        except Exception:
+            pass
+        return "break"
+
+    def _update_tab_styles(self) -> None:
+        active = self._active_group if self._expanded else None
+        for key, btn in (self._tab_buttons or {}).items():
+            try:
+                if key == active:
+                    btn.configure(relief="sunken", bg="#e9eef6")
+                else:
+                    btn.configure(relief="raised", bg=BG)
+            except Exception:
+                continue
+
+    def set_expanded(self, expanded: bool) -> None:
+        if expanded == self._expanded:
+            return
+        self._expanded = expanded
+        if expanded:
+            # restore content area
+            self.content.pack(side="left", fill="both", expand=True, padx=(0, 8), pady=(0, 8))
+            if self.files:
+                self.header.configure(text=f"Palette ({len(self.files)} symbols)")
+        else:
+            # hide list to free horizontal space for the canvas
+            try:
+                self.content.pack_forget()
+            except Exception:
+                pass
+            self.header.configure(text=f"Palette ({len(self.files)})" if self.files else "Palette")
+        if callable(self.on_expand_change):
+            try:
+                self.on_expand_change(expanded)
+            except Exception:
+                pass
+        self._update_tab_styles()
+
     def load_folder(self, folder: str):
         self.folder = folder
         self.files = list_symbol_files(folder)
         self._imgrefs = {}
+        self._tab_buttons = {}
 
         self.header.configure(text=f"Palette ({len(self.files)} symbols)")
         for w in self.inner.winfo_children():
@@ -758,7 +823,7 @@ class SymbolPalette(ttk.Frame):
 
         def normalize_key(name: str) -> str:
             key = name.lower().replace("-", "_")
-            key = re.sub(r"[\\s]+", "_", key)
+            key = re.sub(r"\s+", "_", key)
             key = re.sub(r"_+", "_", key).strip("_")
             # common filename typos observed in dataset
             key = key.replace("intrest", "interest")
@@ -956,32 +1021,42 @@ class SymbolPalette(ttk.Frame):
                 ttk.Label(self.inner, text="No symbols in this group.", foreground="#666").pack(anchor="w", padx=12, pady=8)
                 return
             render_items(items, start_idx=1)
+            self._update_tab_styles()
 
-        # Build vertical tabs as buttons that expand the selected group in-place.
+        def on_tab_click(group_key: str) -> None:
+            # Toggle / accordion behavior:
+            # - click once -> expand
+            # - click again on the same tab -> collapse
+            # - clicking a different tab replaces the visible list
+            if self._expanded and self._active_group == group_key:
+                self.set_expanded(False)
+                return
+            if not self._expanded:
+                self.set_expanded(True)
+            show_group(group_key)
+
+        # Build vertical tabs as buttons (always clickable, even if already selected).
         for label, key in ui_groups:
             cnt = len(grouped.get(key, []))
             if key == "weapons_missiles":
                 cnt = sum(len(v) for v in weapons.values())
             txt = f"{label} ({cnt})"
-            b = tk.Radiobutton(
+            b = tk.Button(
                 self.tab_frame,
                 text=txt,
-                value=key,
-                variable=self._group_var,
-                indicatoron=0,
-                width=1,
                 anchor="w",
                 padx=8,
-                pady=6,
+                pady=8,
                 bg=BG,
                 fg="#111",
                 activebackground="#e9eef6",
                 activeforeground="#111",
-                selectcolor="#ffffff",
-                relief="flat",
-                command=lambda k=key: show_group(k),
+                relief="raised",
+                bd=1,
+                command=lambda k=key: on_tab_click(k),
             )
             b.pack(fill="x", pady=2)
+            self._tab_buttons[key] = b
 
         # Default group: first with content, else frames.
         default_key = "frames"
@@ -993,9 +1068,9 @@ class SymbolPalette(ttk.Frame):
                 default_key = k
                 break
 
-        # Select and render
-        self._group_var.set(default_key)
-        show_group(default_key)
+        # Start collapsed to maximize canvas; expand when user clicks a tab.
+        self._active_group = default_key
+        self.set_expanded(False)
 
 # ---------- Canvas ----------
 class BoardCanvas(tk.Canvas):
@@ -2201,7 +2276,18 @@ class App(tk.Tk):
         center.pack(side="left", fill="both", expand=True)
         right.pack(side="right", fill="y")
 
-        self.palette = SymbolPalette(left, on_start_drag=self._on_palette_drag_start)
+        self._left_panel = left
+        # Control palette width manually (collapsed/expanded)
+        try:
+            self._left_panel.pack_propagate(False)
+        except Exception:
+            pass
+
+        self.palette = SymbolPalette(
+            left,
+            on_start_drag=self._on_palette_drag_start,
+            on_expand_change=self._on_palette_expand_change,
+        )
         self.palette.pack(fill="both", expand=True)
 
         folder = DEFAULT_SYMBOLS_DIR
@@ -2327,6 +2413,19 @@ class App(tk.Tk):
             except Exception:
                 pass
         self._update_status_label(f"Draw mode {'on' if self.draw_enabled else 'off'}")
+
+    def _on_palette_expand_change(self, expanded: bool) -> None:
+        width = PALETTE_WIDTH if expanded else PALETTE_COLLAPSED_WIDTH
+        try:
+            panel = getattr(self, "_left_panel", None)
+            if panel is not None:
+                panel.configure(width=width)
+        except Exception:
+            return
+        try:
+            self.update_idletasks()
+        except Exception:
+            pass
 
     def _detect_digits_only(self):
         # ensure OCR is loaded; if default missing, prompt user for weights
@@ -2557,7 +2656,60 @@ class App(tk.Tk):
         DragGhost(self, name, img_path, on_drop=self._on_drop_to_canvas)
 
     def _on_drop_to_canvas(self, canvas: BoardCanvas, name, img_path, x, y):
-        canvas.place_symbol(name, img_path, x, y)
+        # If dropping a Status symbol, prefer snapping it to the bottom-right of a frame.
+        selected_before = getattr(canvas, "selected_id", None)
+        placed_id = canvas.place_symbol(name, img_path, x, y)
+
+        try:
+            stem = pathlib.Path(str(img_path)).stem.lower()
+        except Exception:
+            stem = str(name).lower()
+        is_status = stem.startswith("status_") or str(name).lower().strip().startswith("status")
+
+        def is_frame_symbol(cid) -> bool:
+            rec = getattr(canvas, "placed", {}).get(cid) if hasattr(canvas, "placed") else None
+            if not rec:
+                return False
+            nm = str(rec.get("name", "")).lower()
+            return "frame_" in nm or nm.startswith("frame ")
+
+        frame_id = selected_before if (selected_before and is_frame_symbol(selected_before)) else None
+        if frame_id is None and is_status and getattr(canvas, "placed", None):
+            # pick nearest frame (if user didn't have one selected)
+            best = None
+            best_d = None
+            for cid, rec in canvas.placed.items():
+                nm = str(rec.get("name", "")).lower()
+                if "frame_" not in nm and not nm.startswith("frame "):
+                    continue
+                bbox = canvas.get_item_bbox(cid)
+                if not bbox:
+                    continue
+                x0, y0, x1, y1 = bbox
+                cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+                d = (cx - x) ** 2 + (cy - y) ** 2
+                if best_d is None or d < best_d:
+                    best_d = d
+                    best = cid
+            # only snap if reasonably close
+            if best is not None and best_d is not None and best_d <= (260**2):
+                frame_id = best
+
+        if is_status and frame_id is not None:
+            bbox = canvas.get_item_bbox(frame_id)
+            if bbox and placed_id in canvas.placed:
+                fx0, fy0, fx1, fy1 = bbox
+                tkimg = canvas.placed[placed_id].get("tk")
+                sw = tkimg.width() if tkimg is not None else 0
+                sh = tkimg.height() if tkimg is not None else 0
+                margin = 6
+                nx = fx1 - (sw / 2) - margin
+                ny = fy1 - (sh / 2) - margin
+                try:
+                    canvas.coords(placed_id, nx, ny)
+                    canvas.tag_raise(placed_id)
+                except Exception:
+                    pass
         self._update_status_label(f"Placed: {name}")
 
     def _analyze_doctrine(self):
