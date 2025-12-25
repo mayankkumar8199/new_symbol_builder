@@ -12,7 +12,7 @@ import tkinter as tk
 from collections import defaultdict
 from difflib import get_close_matches
 from tkinter import ttk, filedialog, messagebox, simpledialog
-from typing import Dict
+from typing import Dict, List
 from PIL import Image, ImageTk, ImageDraw
 import torch
 import timm
