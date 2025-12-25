@@ -681,17 +681,41 @@ class SymbolPalette(ttk.Frame):
     def __init__(self, master, on_start_drag, **kw):
         super().__init__(master, **kw)
         self.on_start_drag = on_start_drag
-        self.canvas = tk.Canvas(self, width=PALETTE_WIDTH, bg=BG, highlightthickness=0)
-        self.sb = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
-        self.inner = ttk.Frame(self.canvas)
-        self.inner.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
-        self.canvas.create_window((0, 0), window=self.inner, anchor="nw", width=PALETTE_WIDTH)
-        self.canvas.configure(yscrollcommand=self.sb.set)
-        self.canvas.pack(side="left", fill="both", expand=True)
-        self.sb.pack(side="right", fill="y")
         self._imgrefs = {}
         self.folder = None
         self.files = []
+        self._grouped = {}
+        self._weapons = {}
+        self._active_group = None
+        self._group_var = tk.StringVar(value="")
+
+        # header (non-scroll)
+        self.header = ttk.Label(self, text="Palette", font=("Segoe UI", 12, "bold"))
+        self.header.pack(anchor="w", padx=12, pady=(10, 6))
+        ttk.Separator(self).pack(fill="x", padx=12, pady=(0, 8))
+
+        body = ttk.Frame(self)
+        body.pack(fill="both", expand=True)
+
+        # left "vertical tabs"
+        self._tab_width = 132
+        self.tab_frame = ttk.Frame(body, width=self._tab_width)
+        self.tab_frame.pack(side="left", fill="y", padx=(8, 4), pady=(0, 8))
+        self.tab_frame.pack_propagate(False)
+
+        # right scrollable list
+        self.content = ttk.Frame(body)
+        self.content.pack(side="left", fill="both", expand=True, padx=(0, 8), pady=(0, 8))
+
+        self.canvas = tk.Canvas(self.content, bg=BG, highlightthickness=0)
+        self.sb = ttk.Scrollbar(self.content, orient="vertical", command=self.canvas.yview)
+        self.inner = ttk.Frame(self.canvas)
+        self.inner.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
+        self._inner_win = self.canvas.create_window((0, 0), window=self.inner, anchor="nw")
+        self.canvas.bind("<Configure>", lambda e: self.canvas.itemconfigure(self._inner_win, width=e.width))
+        self.canvas.configure(yscrollcommand=self.sb.set)
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.sb.pack(side="right", fill="y")
 
     def _recolor_frame_if_needed(self, pil: Image.Image, name: str) -> Image.Image:
         lname = name.lower()
@@ -716,95 +740,146 @@ class SymbolPalette(ttk.Frame):
     def load_folder(self, folder: str):
         self.folder = folder
         self.files = list_symbol_files(folder)
+        self._imgrefs = {}
+
+        self.header.configure(text=f"Palette ({len(self.files)} symbols)")
         for w in self.inner.winfo_children():
             w.destroy()
-
-        title = ttk.Label(self.inner, text=f"Palette ({len(self.files)} symbols)", font=("Segoe UI", 12, "bold"))
-        title.pack(anchor="w", padx=12, pady=(10, 6))
-        ttk.Separator(self.inner).pack(fill="x", padx=12, pady=(0, 8))
+        for w in self.tab_frame.winfo_children():
+            w.destroy()
 
         if not self.files:
-            ttk.Label(self.inner, text="No images found.\nAdd PNG/JPG symbols to the folder.",
-                      foreground="#666").pack(anchor="w", padx=12, pady=8)
+            ttk.Label(
+                self.inner,
+                text="No images found.\nAdd PNG/JPG symbols to the folder.",
+                foreground="#666",
+            ).pack(anchor="w", padx=12, pady=8)
             return
 
         def normalize_key(name: str) -> str:
             key = name.lower().replace("-", "_")
             key = re.sub(r"[\\s]+", "_", key)
             key = re.sub(r"_+", "_", key).strip("_")
+            # common filename typos observed in dataset
+            key = key.replace("intrest", "interest")
+            key = key.replace("regement", "regiment")
+            key = key.replace("secion", "section")
             return key
 
-        def load_rules_categories() -> Dict[str, str]:
-            categories = {}
+        def load_rules_groups() -> Dict[str, str]:
+            groups: Dict[str, str] = {}
             if yaml is None:
-                return categories
+                return groups
             rules_path = pathlib.Path(__file__).parent / "rules.yaml"
             try:
                 data = yaml.safe_load(rules_path.read_text(encoding="utf-8")) or {}
             except Exception:
-                return categories
-            mapping = {
-                "frames": "Frames",
-                "echelons": "Echelon",
-                "status": "Status",
-                "roles": "Roles",
-                "mobility": "Mobility",
-                "capabilities_weapons": "Capabilities",
-                "missiles": "Missiles",
-                "control_measures": "Control Measures",
-                "axes_of_advance": "Axes of Advance",
-                "boundaries_misc": "Boundaries",
-                "atomic_glyphs": "Atomic Glyphs",
-            }
-            for key, label in mapping.items():
-                items = data.get(key, [])
-                for item in items:
-                    categories[normalize_key(item)] = label
-            return categories
+                return groups
 
-        cat_map = load_rules_categories()
+            def add(items, group_key: str):
+                for item in items or []:
+                    groups[normalize_key(str(item))] = group_key
 
-        def cat_for(name_lower: str) -> str:
-            k = normalize_key(name_lower)
-            if k in cat_map:
-                return cat_map[k]
-            return "Other"
+            add(data.get("frames", []), "frames")
+            add(data.get("echelons", []), "echelons")
+            add(data.get("status", []), "status")
+            add(data.get("roles", []), "core_glyphs")
+            add(data.get("mobility", []), "mobility")
+            add(data.get("control_measures", []), "control_measures")
+            # Axes are treated as control measures for UI grouping
+            add(data.get("axes_of_advance", []), "control_measures")
+            add(data.get("capabilities_weapons", []), "weapons_missiles")
+            add(data.get("missiles", []), "weapons_missiles")
+            add(data.get("boundaries_misc", []), "other")
+            add(data.get("atomic_glyphs", []), "other")
+            return groups
 
-        grouped: Dict[str, List[pathlib.Path]] = {}
-        for p in self.files:
-            n = filename_to_name(p)
-            c = cat_for(n)
-            grouped.setdefault(c, []).append(p)
+        group_map = load_rules_groups()
 
-        order = [
-            "Frames",
-            "Echelon",
-            "Status",
-            "Roles",
-            "Mobility",
-            "Capabilities",
-            "Missiles",
-            "Control Measures",
-            "Axes of Advance",
-            "Boundaries",
-            "Atomic Glyphs",
-            "Other",
+        def weapon_subcategory(key: str) -> str:
+            # Exactly the PDF-driven subcategories.
+            if "howitzer" in key or key == "howitzer_base":
+                return "Howitzers"
+            if key in {"lmg", "mmg", "hmg"} or "machine_gun" in key or key.endswith("_mg") or "grenade_launcher" in key:
+                return "Machine Gun"
+            if "air_defense" in key or key == "primitive_air_defense_base":
+                return "Air Defense Missile"
+            if "anti_tank_rocket_launcher" in key or "rocket_launcher" in key:
+                return "Anti-Tank Rocket Launcher"
+            if "anti_tank_gun" in key or "recoilless" in key or "armored_wheeled_medium_gun_system" in key:
+                return "Anti-Tank Gun"
+            if "missile" in key or key == "missile_base":
+                return "Missiles"
+            # Fallback: keep inside Weapons \& Missiles tab
+            return "Missiles"
+
+        def group_for(key: str) -> str:
+            # First, rules.yaml mapping (normalized)
+            if key in group_map:
+                return group_map[key]
+            # Then, common prefixes
+            if key.startswith("frame_"):
+                return "frames"
+            if key.startswith("echelon_"):
+                return "echelons"
+            if key.startswith("status_"):
+                return "status"
+            if key.startswith("role_"):
+                return "core_glyphs"
+            if key in {"tracked", "towed", "wheeled_high_mobility", "wheeled_limited_mobility"}:
+                return "mobility"
+            if key.startswith("cm_") or key.endswith("_axis_of_advance") or key.endswith("axis_of_advance"):
+                return "control_measures"
+            if any(t in key for t in ("missile", "howitzer", "anti_tank", "grenade_launcher", "lmg", "mmg", "hmg")):
+                return "weapons_missiles"
+            return "other"
+
+        # Group definitions (vertical tabs)
+        ui_groups = [
+            ("Frames / Affiliation", "frames"),
+            ("Echelon", "echelons"),
+            ("Status", "status"),
+            ("Core Glyphs", "core_glyphs"),
+            ("Mobility Symbols", "mobility"),
+            ("Control Measures", "control_measures"),
+            ("Weapons & Missiles", "weapons_missiles"),
+            ("Other Symbols", "other"),
         ]
 
-        # Horizontal category buttons with expandable list
-        btn_row = ttk.Frame(self.inner)
-        btn_row.pack(fill="x", padx=6, pady=4)
+        grouped: Dict[str, List[pathlib.Path]] = {k: [] for _label, k in ui_groups}
+        weapons: Dict[str, List[pathlib.Path]] = {
+            "Howitzers": [],
+            "Machine Gun": [],
+            "Missiles": [],
+            "Air Defense Missile": [],
+            "Anti-Tank Rocket Launcher": [],
+            "Anti-Tank Gun": [],
+        }
 
-        container = ttk.Frame(self.inner)
-        container.pack(fill="both", expand=True, padx=4, pady=4)
+        for p in self.files:
+            key = normalize_key(pathlib.Path(p).stem)
+            # force key bases into weapons/missiles tab
+            if key in {"missile_base", "howitzer_base", "primitive_air_defense_base"}:
+                g = "weapons_missiles"
+            else:
+                g = group_for(key)
+            if g == "weapons_missiles":
+                weapons[weapon_subcategory(key)].append(p)
+            else:
+                grouped.setdefault(g, []).append(p)
 
-        def show_category(cat: str, start_idx: int = 1):
-            for w in container.winfo_children():
-                w.destroy()
-            items = grouped.get(cat, [])
+        for k in grouped:
+            grouped[k] = sorted(grouped[k], key=lambda p: natural_key(str(p)))
+        for k in weapons:
+            weapons[k] = sorted(weapons[k], key=lambda p: natural_key(str(p)))
+
+        self._grouped = grouped
+        self._weapons = weapons
+
+        def render_items(items: List[pathlib.Path], *, start_idx: int = 1):
             idx = start_idx
             for path in items:
-                row = ttk.Frame(container)
+                row = ttk.Frame(self.inner)
                 row.pack(fill="x", padx=8, pady=4, anchor="w")
 
                 lbl_img = ttk.Label(row)
@@ -821,28 +896,106 @@ class SymbolPalette(ttk.Frame):
                 lbl_img.configure(image=tkimg)
 
                 name = filename_to_name(path)
-                lbl_txt = ttk.Label(row, text=f"{idx}. {name}", wraplength=PALETTE_WIDTH-140, justify="left")
+                wrap = max(160, PALETTE_WIDTH - self._tab_width - 150)
+                lbl_txt = ttk.Label(row, text=f"{idx}. {name}", wraplength=wrap, justify="left")
                 lbl_txt.grid(row=0, column=1, sticky="w", padx=(8, 0))
 
                 def begin(ev, n=name, p=path):
                     self.on_start_drag(n, p, ev)
+
                 lbl_img.bind("<Button-1>", begin)
                 lbl_txt.bind("<Button-1>", begin)
                 idx += 1
 
-        # build buttons
-        idx_global = 1
-        for cat in order:
-            if cat not in grouped:
-                continue
-            b = ttk.Button(btn_row, text=cat, command=lambda c=cat: show_category(c, idx_global))
-            b.pack(side="left", padx=3, pady=2)
+        def show_group(group_key: str):
+            self._active_group = group_key
+            self.canvas.yview_moveto(0.0)
+            for w in self.inner.winfo_children():
+                w.destroy()
 
-        # Show first available category by default
-        for cat in order:
-            if cat in grouped:
-                show_category(cat, idx_global)
+            label = next((lbl for lbl, k in ui_groups if k == group_key), group_key)
+            ttk.Label(self.inner, text=label, font=("Segoe UI", 11, "bold")).pack(anchor="w", padx=12, pady=(6, 2))
+
+            if group_key == "status":
+                ttk.Label(
+                    self.inner,
+                    text="Placement note: Status is shown at the bottom-right of the frame.",
+                    foreground="#555",
+                    wraplength=PALETTE_WIDTH - self._tab_width - 24,
+                ).pack(anchor="w", padx=12, pady=(0, 6))
+
+            if group_key == "weapons_missiles":
+                order = [
+                    "Howitzers",
+                    "Machine Gun",
+                    "Missiles",
+                    "Air Defense Missile",
+                    "Anti-Tank Rocket Launcher",
+                    "Anti-Tank Gun",
+                ]
+                any_items = False
+                idx = 1
+                for sub in order:
+                    items = weapons.get(sub, [])
+                    if not items:
+                        continue
+                    any_items = True
+                    ttk.Label(self.inner, text=sub, font=("Segoe UI", 10, "bold"), foreground="#1B4F72").pack(
+                        anchor="w", padx=12, pady=(10, 2)
+                    )
+                    render_items(items, start_idx=idx)
+                    idx += len(items)
+                if not any_items:
+                    ttk.Label(self.inner, text="No symbols in this group.", foreground="#666").pack(
+                        anchor="w", padx=12, pady=8
+                    )
+                return
+
+            items = grouped.get(group_key, [])
+            if not items:
+                ttk.Label(self.inner, text="No symbols in this group.", foreground="#666").pack(anchor="w", padx=12, pady=8)
+                return
+            render_items(items, start_idx=1)
+
+        # Build vertical tabs as buttons that expand the selected group in-place.
+        for label, key in ui_groups:
+            cnt = len(grouped.get(key, []))
+            if key == "weapons_missiles":
+                cnt = sum(len(v) for v in weapons.values())
+            txt = f"{label} ({cnt})"
+            b = tk.Radiobutton(
+                self.tab_frame,
+                text=txt,
+                value=key,
+                variable=self._group_var,
+                indicatoron=0,
+                width=1,
+                anchor="w",
+                padx=8,
+                pady=6,
+                bg=BG,
+                fg="#111",
+                activebackground="#e9eef6",
+                activeforeground="#111",
+                selectcolor="#ffffff",
+                relief="flat",
+                command=lambda k=key: show_group(k),
+            )
+            b.pack(fill="x", pady=2)
+
+        # Default group: first with content, else frames.
+        default_key = "frames"
+        for _lbl, k in ui_groups:
+            c = len(grouped.get(k, []))
+            if k == "weapons_missiles":
+                c = sum(len(v) for v in weapons.values())
+            if c:
+                default_key = k
                 break
+
+        # Select and render
+        self._group_var.set(default_key)
+        show_group(default_key)
 
 # ---------- Canvas ----------
 class BoardCanvas(tk.Canvas):
